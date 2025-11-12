@@ -27,8 +27,6 @@ export default function Home() {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [summary, setSummary] = useState<any>(null);
-  const [loadingSummary, setLoadingSummary] = useState(false);
   const [selectedLog, setSelectedLog] = useState<McapLog | null>(null);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -236,35 +234,6 @@ export default function Home() {
     setIsDeleteModalOpen(true);
   };
 
-  // Fetch parse summary
-  const fetchSummary = async () => {
-    setLoadingSummary(true);
-    setError(null);
-    try {
-      const response = await fetch(`${API_BASE_URL}/parse/summary/`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(
-          errorData.detail || errorData.message || `Failed to fetch summary: ${response.statusText}`
-        );
-      }
-
-      const data = await response.json();
-      setSummary(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to fetch summary');
-      console.error('Error fetching summary:', err);
-    } finally {
-      setLoadingSummary(false);
-    }
-  };
-
   // Fetch logs on component mount
   useEffect(() => {
     fetchLogs();
@@ -318,36 +287,6 @@ export default function Home() {
           {error && (
             <div className="mt-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
               <p className="text-red-600 dark:text-red-400">{error}</p>
-            </div>
-          )}
-        </div>
-
-        {/* Parse Summary Section */}
-        <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-md p-6 mb-8">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-2xl font-semibold text-black dark:text-zinc-50">
-              Parse Summary
-            </h2>
-            <button
-              onClick={fetchSummary}
-              disabled={loadingSummary}
-              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-            >
-              {loadingSummary ? 'Loading...' : 'Get Summary'}
-            </button>
-          </div>
-
-          {summary ? (
-            <div className="mt-4">
-              <pre className="bg-zinc-100 dark:bg-zinc-800 p-4 rounded-lg overflow-x-auto text-sm text-zinc-800 dark:text-zinc-200">
-                {JSON.stringify(summary, null, 2)}
-              </pre>
-            </div>
-          ) : (
-            <div className="text-center py-4">
-              <p className="text-zinc-600 dark:text-zinc-400">
-                Click "Get Summary" to fetch parse summary data
-              </p>
             </div>
           )}
         </div>
