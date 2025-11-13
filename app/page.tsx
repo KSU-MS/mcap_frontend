@@ -425,12 +425,15 @@ export default function Home() {
 
     try {
       const method = usePut ? 'PUT' : 'PATCH';
-      const body = usePut
-        ? {
-            ...selectedLog,
-            ...editForm,
-          }
-        : editForm;
+      
+      // Build request body - always send all editable fields (even if empty)
+      // This ensures compatibility with backends that expect all fields
+      const body = {
+        car: editForm.car || '',
+        driver: editForm.driver || '',
+        event_type: editForm.event_type || '',
+        notes: editForm.notes || '',
+      };
 
       const response = await fetch(`${API_BASE_URL}/mcap-logs/${id}/`, {
         method,
@@ -441,10 +444,28 @@ export default function Home() {
       });
 
       if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}));
-        throw new Error(
-          errorData.detail || errorData.message || `Update failed: ${response.statusText}`
-        );
+        let errorMessage = `Update failed: ${response.statusText}`;
+        try {
+          const errorData = await response.json();
+          // Handle different error response formats
+          if (errorData.detail) {
+            errorMessage = errorData.detail;
+          } else if (errorData.message) {
+            errorMessage = errorData.message;
+          } else if (typeof errorData === 'object') {
+            // Handle field-specific errors
+            const fieldErrors = Object.entries(errorData)
+              .map(([key, value]) => `${key}: ${Array.isArray(value) ? value.join(', ') : value}`)
+              .join('; ');
+            if (fieldErrors) {
+              errorMessage = fieldErrors;
+            }
+          }
+        } catch (parseError) {
+          // If JSON parsing fails, use the status text
+          console.error('Error parsing error response:', parseError);
+        }
+        throw new Error(errorMessage);
       }
 
       setIsEditModalOpen(false);
@@ -977,7 +998,7 @@ export default function Home() {
             </div>
           </div>
         )}
-      </div>
+        </div>
     </div>
   );
 }
