@@ -1,6 +1,261 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import dynamic from 'next/dynamic';
+import 'leaflet/dist/leaflet.css';
+
+// Map Preview Component - small preview for table rows
+const MapPreview = dynamic(
+  () => {
+    return Promise.resolve().then(() => {
+      const React = require('react');
+      const L = require('leaflet');
+      const { MapContainer, TileLayer, GeoJSON, useMap } = require('react-leaflet');
+
+      // Fix for default marker icons in Next.js
+      if (typeof window !== 'undefined') {
+        delete (L.Icon.Default.prototype as any)._getIconUrl;
+        L.Icon.Default.mergeOptions({
+          iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+          iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+          shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+        });
+      }
+
+      const FitBounds = ({ geoJsonData }: { geoJsonData: any }) => {
+        const map = useMap();
+        React.useEffect(() => {
+          if (geoJsonData && map) {
+            try {
+              const geoJsonLayer = L.geoJSON(geoJsonData as any);
+              const bounds = geoJsonLayer.getBounds();
+              if (bounds.isValid()) {
+                map.fitBounds(bounds, { padding: [5, 5] });
+              }
+            } catch (err) {
+              // Silently fail for preview
+            }
+          }
+        }, [geoJsonData, map]);
+        return null;
+      };
+
+      return ({ logId, apiBaseUrl, onMapClick }: { logId: number; apiBaseUrl: string; onMapClick?: (logId: number) => void }) => {
+      const [geoJsonData, setGeoJsonData] = React.useState<any>(null);
+      const [loading, setLoading] = React.useState(true);
+
+      React.useEffect(() => {
+        let cancelled = false;
+        const fetchGeoJson = async () => {
+          try {
+            const response = await fetch(`${apiBaseUrl}/mcap-logs/${logId}/geojson`);
+            if (!response.ok) {
+              throw new Error('Failed to fetch');
+            }
+            const data = await response.json();
+            if (!cancelled) {
+              setGeoJsonData(data);
+            }
+          } catch (err) {
+            // Silently fail for preview
+          } finally {
+            if (!cancelled) {
+              setLoading(false);
+            }
+          }
+        };
+
+        fetchGeoJson();
+        return () => {
+          cancelled = true;
+        };
+      }, [logId, apiBaseUrl]);
+
+      const geoJsonStyle = {
+        color: '#3388ff',
+        weight: 2,
+        opacity: 0.8,
+        fillOpacity: 0.2,
+      };
+
+      const pointToLayer = (feature: any, latlng: L.LatLng) => {
+        return L.circleMarker(latlng, {
+          radius: 3,
+          fillColor: '#3388ff',
+          color: '#fff',
+          weight: 1,
+          opacity: 1,
+          fillOpacity: 0.8,
+        });
+      };
+
+      // Calculate center from GeoJSON if available
+      let center: [number, number] = [0, 0];
+      if (geoJsonData?.features?.[0]?.geometry?.coordinates) {
+        const coords = geoJsonData.features[0].geometry.coordinates;
+        if (geoJsonData.features[0].geometry.type === 'Point') {
+          center = [coords[1], coords[0]];
+        } else if (geoJsonData.features[0].geometry.type === 'LineString' && coords.length > 0) {
+          center = [coords[0][1], coords[0][0]];
+        }
+      }
+
+      if (loading) {
+        return (
+          <div className="w-full h-24 bg-zinc-100 dark:bg-zinc-800 rounded flex items-center justify-center">
+            <span className="text-xs text-zinc-500">Loading...</span>
+          </div>
+        );
+      }
+
+      if (!geoJsonData) {
+        return (
+          <div className="w-full h-24 bg-zinc-100 dark:bg-zinc-800 rounded flex items-center justify-center">
+            <span className="text-xs text-zinc-500">No map data</span>
+          </div>
+        );
+      }
+
+      return (
+        <div 
+          className="w-full h-24 rounded overflow-hidden border border-zinc-200 dark:border-zinc-700 cursor-pointer hover:border-blue-500 transition-colors"
+          onClick={() => onMapClick?.(logId)}
+          title="Click to view full map"
+        >
+          <MapContainer
+            center={center}
+            zoom={13}
+            style={{ height: '100%', width: '100%', zIndex: 0 }}
+            scrollWheelZoom={false}
+            zoomControl={false}
+            dragging={false}
+            doubleClickZoom={false}
+            boxZoom={false}
+            touchZoom={false}
+          >
+            <TileLayer
+              attribution=""
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+            <GeoJSON
+              data={geoJsonData}
+              style={geoJsonStyle}
+              pointToLayer={pointToLayer}
+            />
+            <FitBounds geoJsonData={geoJsonData} />
+          </MapContainer>
+        </div>
+      );
+      };
+    });
+  },
+  { ssr: false }
+);
+
+// Map Component - dynamically imported to avoid SSR issues
+const MapComponent = dynamic(
+  () => {
+    return Promise.resolve().then(() => {
+      const React = require('react');
+      const L = require('leaflet');
+      const { MapContainer, TileLayer, GeoJSON, useMap } = require('react-leaflet');
+
+      // Fix for default marker icons in Next.js
+      if (typeof window !== 'undefined') {
+        delete (L.Icon.Default.prototype as any)._getIconUrl;
+        L.Icon.Default.mergeOptions({
+          iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+          iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+          shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+        });
+      }
+
+      const FitBounds = ({ geoJsonData }: { geoJsonData: any }) => {
+        const map = useMap();
+        React.useEffect(() => {
+          if (geoJsonData && map) {
+            try {
+              const geoJsonLayer = L.geoJSON(geoJsonData as any);
+              const bounds = geoJsonLayer.getBounds();
+              if (bounds.isValid()) {
+                map.fitBounds(bounds, { padding: [20, 20] });
+              }
+            } catch (err) {
+              console.error('Error fitting bounds:', err);
+            }
+          }
+        }, [geoJsonData, map]);
+        return null;
+      };
+
+      return ({ geoJsonData }: { geoJsonData: any }) => {
+        const geoJsonStyle = {
+          color: '#3388ff',
+          weight: 3,
+          opacity: 0.8,
+          fillOpacity: 0.2,
+        };
+
+        const pointToLayer = (feature: any, latlng: L.LatLng) => {
+          return L.circleMarker(latlng, {
+            radius: 6,
+            fillColor: '#3388ff',
+            color: '#fff',
+            weight: 2,
+            opacity: 1,
+            fillOpacity: 0.8,
+          });
+        };
+
+        const onEachFeature = (feature: any, layer: L.Layer) => {
+          if (feature.properties) {
+            const popupContent = Object.keys(feature.properties)
+              .map((key) => `<strong>${key}:</strong> ${feature.properties[key]}`)
+              .join('<br>');
+            layer.bindPopup(popupContent);
+          }
+        };
+
+        // Calculate center from GeoJSON if available
+        let center: [number, number] = [0, 0];
+        if (geoJsonData?.features?.[0]?.geometry?.coordinates) {
+          const coords = geoJsonData.features[0].geometry.coordinates;
+          if (geoJsonData.features[0].geometry.type === 'Point') {
+            center = [coords[1], coords[0]];
+          } else if (geoJsonData.features[0].geometry.type === 'LineString' && coords.length > 0) {
+            center = [coords[0][1], coords[0][0]];
+          }
+        }
+
+        return (
+          <div className="w-full h-full">
+            <MapContainer
+              center={center}
+              zoom={13}
+              style={{ height: '100%', width: '100%', zIndex: 0 }}
+              scrollWheelZoom={true}
+            >
+              <TileLayer
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
+              {geoJsonData && (
+                <GeoJSON
+                  data={geoJsonData}
+                  style={geoJsonStyle}
+                  pointToLayer={pointToLayer}
+                  onEachFeature={onEachFeature}
+                />
+              )}
+              <FitBounds geoJsonData={geoJsonData} />
+            </MapContainer>
+          </div>
+        );
+      };
+    });
+  },
+  { ssr: false }
+);
 
 interface McapLog {
   id: number;
@@ -41,6 +296,9 @@ export default function Home() {
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [loadingLog, setLoadingLog] = useState(false);
+  const [isMapModalOpen, setIsMapModalOpen] = useState(false);
+  const [geoJsonData, setGeoJsonData] = useState<any>(null);
+  const [loadingGeoJson, setLoadingGeoJson] = useState(false);
 
   // Fetch logs from the API
   const fetchLogs = async () => {
@@ -234,6 +492,26 @@ export default function Home() {
     setIsDeleteModalOpen(true);
   };
 
+  // Fetch GeoJSON for a log
+  const fetchGeoJson = async (id: number) => {
+    setLoadingGeoJson(true);
+    setError(null);
+    try {
+      const response = await fetch(`${API_BASE_URL}/mcap-logs/${id}/geojson`);
+      if (!response.ok) {
+        throw new Error(`Failed to fetch GeoJSON: ${response.statusText}`);
+      }
+      const data = await response.json();
+      setGeoJsonData(data);
+      setIsMapModalOpen(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch GeoJSON');
+      console.error('Error fetching GeoJSON:', err);
+    } finally {
+      setLoadingGeoJson(false);
+    }
+  };
+
   // Fetch logs on component mount
   useEffect(() => {
     fetchLogs();
@@ -320,6 +598,7 @@ export default function Home() {
                 <thead>
                   <tr className="border-b border-zinc-200 dark:border-zinc-700">
                     <th className="text-left py-3 px-4 text-sm font-semibold text-black dark:text-zinc-50">ID</th>
+                    <th className="text-left py-3 px-4 text-sm font-semibold text-black dark:text-zinc-50">Map Preview</th>
                     <th className="text-left py-3 px-4 text-sm font-semibold text-black dark:text-zinc-50">Captured At</th>
                     <th className="text-left py-3 px-4 text-sm font-semibold text-black dark:text-zinc-50">Duration</th>
                     <th className="text-left py-3 px-4 text-sm font-semibold text-black dark:text-zinc-50">Channels</th>
@@ -337,6 +616,13 @@ export default function Home() {
                       className="border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
                     >
                       <td className="py-3 px-4 text-sm text-zinc-700 dark:text-zinc-300">{log.id}</td>
+                      <td className="py-3 px-4">
+                        <MapPreview 
+                          logId={log.id} 
+                          apiBaseUrl={API_BASE_URL} 
+                          onMapClick={fetchGeoJson}
+                        />
+                      </td>
                       <td className="py-3 px-4 text-sm text-zinc-700 dark:text-zinc-300">
                         {log.captured_at
                           ? new Date(log.captured_at).toLocaleString()
@@ -386,12 +672,19 @@ export default function Home() {
                         {log.event_type || 'N/A'}
                       </td>
                       <td className="py-3 px-4 text-sm">
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 flex-wrap">
                           <button
                             onClick={() => handleViewLog(log.id)}
                             className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors text-xs"
                           >
                             View
+                          </button>
+                          <button
+                            onClick={() => fetchGeoJson(log.id)}
+                            disabled={loadingGeoJson}
+                            className="px-3 py-1 bg-purple-500 text-white rounded hover:bg-purple-600 disabled:opacity-50 transition-colors text-xs"
+                          >
+                            Map
                           </button>
                           <button
                             onClick={() => handleEditLog(log.id)}
@@ -515,8 +808,42 @@ export default function Home() {
                         <p className="text-black dark:text-zinc-50 mt-1">{selectedLog.notes}</p>
                       </div>
                     )}
+                    <div className="pt-4">
+                      <button
+                        onClick={() => fetchGeoJson(selectedLog.id)}
+                        disabled={loadingGeoJson}
+                        className="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                      >
+                        {loadingGeoJson ? 'Loading Map...' : 'View on Map'}
+                      </button>
+                    </div>
                   </div>
                 )}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Map Modal */}
+        {isMapModalOpen && geoJsonData && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-xl max-w-6xl w-full h-[90vh] flex flex-col">
+              <div className="p-4 border-b border-zinc-200 dark:border-zinc-700 flex justify-between items-center">
+                <h2 className="text-2xl font-semibold text-black dark:text-zinc-50">
+                  Map View - Log ID: {selectedLog?.id}
+                </h2>
+                <button
+                  onClick={() => {
+                    setIsMapModalOpen(false);
+                    setGeoJsonData(null);
+                  }}
+                  className="text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200 text-2xl"
+                >
+                  ×
+                </button>
+              </div>
+              <div className="flex-1 relative">
+                <MapComponent geoJsonData={geoJsonData} />
               </div>
             </div>
           </div>
