@@ -9,6 +9,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Search, Download } from 'lucide-react';
 
 // Map Preview Component - small preview for table rows
 const MapPreview = dynamic(
@@ -50,10 +52,26 @@ const MapPreview = dynamic(
       const [geoJsonData, setGeoJsonData] = React.useState<any>(null);
       const [loading, setLoading] = React.useState(true);
       const [mounted, setMounted] = React.useState(false);
+      const [containerReady, setContainerReady] = React.useState(false);
 
       React.useEffect(() => {
-        setMounted(true);
+        // Use a small delay to ensure DOM is ready
+        const timer = setTimeout(() => {
+          setMounted(true);
+        }, 100);
+        return () => clearTimeout(timer);
       }, []);
+
+      // Check if container is ready after mount
+      React.useEffect(() => {
+        if (mounted) {
+          // Additional small delay to ensure container is in DOM
+          const timer = setTimeout(() => {
+            setContainerReady(true);
+          }, 50);
+          return () => clearTimeout(timer);
+        }
+      }, [mounted]);
 
       React.useEffect(() => {
         if (!mounted) return;
@@ -143,29 +161,35 @@ const MapPreview = dynamic(
           onClick={() => onMapClick?.(logId)}
           title="Click to view full map"
         >
-          <MapContainer
-            center={center}
-            zoom={13}
-            style={{ height: '100%', width: '100%', zIndex: 0 }}
-            scrollWheelZoom={false}
-            zoomControl={false}
-            dragging={false}
-            doubleClickZoom={false}
-            boxZoom={false}
-            touchZoom={false}
-            key={`map-${logId}-${mounted}`}
-          >
-            <TileLayer
-              attribution=""
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-            <GeoJSON
-              data={geoJsonData}
-              style={geoJsonStyle}
-              pointToLayer={pointToLayer}
-            />
-            <FitBounds geoJsonData={geoJsonData} />
-          </MapContainer>
+          {mounted && containerReady ? (
+            <MapContainer
+              center={center}
+              zoom={13}
+              style={{ height: '100%', width: '100%', zIndex: 0 }}
+              scrollWheelZoom={false}
+              zoomControl={false}
+              dragging={false}
+              doubleClickZoom={false}
+              boxZoom={false}
+              touchZoom={false}
+              key={`map-${logId}-${mounted}`}
+            >
+              <TileLayer
+                attribution=""
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
+              <GeoJSON
+                data={geoJsonData}
+                style={geoJsonStyle}
+                pointToLayer={pointToLayer}
+              />
+              <FitBounds geoJsonData={geoJsonData} />
+            </MapContainer>
+          ) : (
+            <div className="w-full h-full flex items-center justify-center">
+              <span className="text-xs text-zinc-500">Loading map...</span>
+            </div>
+          )}
         </div>
       );
       };
@@ -304,9 +328,9 @@ interface McapLog {
   channels?: string[];
   channels_summary?: string[];
   rough_point?: string;
-  car?: string;
-  driver?: string;
-  event_type?: string;
+  car?: string | { id: number; name: string };
+  driver?: string | { id: number; name: string };
+  event_type?: string | { id: number; name: string };
   notes?: string;
   created_at?: string;
   updated_at?: string;
@@ -337,6 +361,55 @@ export default function Home() {
   const [isMapModalOpen, setIsMapModalOpen] = useState(false);
   const [geoJsonData, setGeoJsonData] = useState<any>(null);
   const [loadingGeoJson, setLoadingGeoJson] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [downloading, setDownloading] = useState<number | null>(null);
+  const [cars, setCars] = useState<{ id: number; name: string }[]>([]);
+  const [drivers, setDrivers] = useState<{ id: number; name: string }[]>([]);
+  const [eventTypes, setEventTypes] = useState<{ id: number; name: string }[]>([]);
+  const [loadingLookups, setLoadingLookups] = useState(false);
+
+  // Fetch cars, drivers, and event types for dropdowns
+  const fetchLookups = async () => {
+    setLoadingLookups(true);
+    try {
+      // Fetch cars
+      try {
+        const carsResponse = await fetch(`${API_BASE_URL}/cars/`);
+        if (carsResponse.ok) {
+          const carsData = await carsResponse.json();
+          setCars(Array.isArray(carsData) ? carsData : []);
+        }
+      } catch (err) {
+        console.warn('Failed to fetch cars:', err);
+      }
+
+      // Fetch drivers
+      try {
+        const driversResponse = await fetch(`${API_BASE_URL}/drivers/`);
+        if (driversResponse.ok) {
+          const driversData = await driversResponse.json();
+          setDrivers(Array.isArray(driversData) ? driversData : []);
+        }
+      } catch (err) {
+        console.warn('Failed to fetch drivers:', err);
+      }
+
+      // Fetch event types
+      try {
+        const eventTypesResponse = await fetch(`${API_BASE_URL}/event-types/`);
+        if (eventTypesResponse.ok) {
+          const eventTypesData = await eventTypesResponse.json();
+          setEventTypes(Array.isArray(eventTypesData) ? eventTypesData : []);
+        }
+      } catch (err) {
+        console.warn('Failed to fetch event types:', err);
+      }
+    } catch (err) {
+      console.error('Error fetching lookups:', err);
+    } finally {
+      setLoadingLookups(false);
+    }
+  };
 
   // Fetch logs from the API
   const fetchLogs = async () => {
@@ -439,15 +512,39 @@ export default function Home() {
     }
   };
 
+  // Helper to extract name from car/driver/event_type (handles both object and string)
+  const getName = (value: string | { id: number; name: string } | undefined): string => {
+    if (!value) return 'N/A';
+    if (typeof value === 'string') return value;
+    if (typeof value === 'object' && 'name' in value) return value.name;
+    return 'N/A';
+  };
+
+  // Helper to extract ID from car/driver/event_type (handles both object and string)
+  const extractId = (value: any): string => {
+    if (!value) return '';
+    if (typeof value === 'object' && value.id) return value.id.toString();
+    if (typeof value === 'string') {
+      // If it's a string, try to find matching ID from lookups
+      const carMatch = cars.find(c => c.name === value);
+      if (carMatch) return carMatch.id.toString();
+      const driverMatch = drivers.find(d => d.name === value);
+      if (driverMatch) return driverMatch.id.toString();
+      const eventMatch = eventTypes.find(e => e.name === value);
+      if (eventMatch) return eventMatch.id.toString();
+    }
+    return '';
+  };
+
   // Open edit modal
   const handleEditLog = async (id: number) => {
     try {
       const log = await fetchLog(id);
       setSelectedLog(log);
       setEditForm({
-        car: log.car || '',
-        driver: log.driver || '',
-        event_type: log.event_type || '',
+        car: extractId(log.car),
+        driver: extractId(log.driver),
+        event_type: extractId(log.event_type),
         notes: log.notes || '',
       });
       setIsEditModalOpen(true);
@@ -464,12 +561,11 @@ export default function Home() {
     try {
       const method = usePut ? 'PUT' : 'PATCH';
       
-      // Build request body - always send all editable fields (even if empty)
-      // This ensures compatibility with backends that expect all fields
+      // Build request body - convert IDs to numbers for car, driver, event_type
       const body = {
-        car: editForm.car || '',
-        driver: editForm.driver || '',
-        event_type: editForm.event_type || '',
+        car: editForm.car ? Number(editForm.car) : null,
+        driver: editForm.driver ? Number(editForm.driver) : null,
+        event_type: editForm.event_type ? Number(editForm.event_type) : null,
         notes: editForm.notes || '',
       };
 
@@ -571,8 +667,64 @@ export default function Home() {
     }
   };
 
-  // Fetch logs on component mount
+  // Download MCAP file
+  const handleDownload = async (id: number) => {
+    setDownloading(id);
+    setError(null);
+    try {
+      const response = await fetch(`${API_BASE_URL}/mcap-logs/${id}/download`);
+      if (!response.ok) {
+        throw new Error(`Failed to download file: ${response.statusText}`);
+      }
+      
+      // Get filename from Content-Disposition header or use default
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let filename = `mcap-log-${id}.mcap`;
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="?(.+)"?/i);
+        if (filenameMatch) {
+          filename = filenameMatch[1];
+        }
+      }
+
+      // Create blob and download
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      document.body.removeChild(a);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to download file');
+      console.error('Error downloading file:', err);
+    } finally {
+      setDownloading(null);
+    }
+  };
+
+  // Filter logs based on search query
+  const filteredLogs = logs.filter((log) => {
+    if (!searchQuery.trim()) return true;
+    
+    const query = searchQuery.toLowerCase();
+    return (
+      log.id.toString().includes(query) ||
+      getName(log.car).toLowerCase().includes(query) ||
+      getName(log.driver).toLowerCase().includes(query) ||
+      getName(log.event_type).toLowerCase().includes(query) ||
+      (log.notes && log.notes.toLowerCase().includes(query)) ||
+      (log.recovery_status && log.recovery_status.toLowerCase().includes(query)) ||
+      (log.parse_status && log.parse_status.toLowerCase().includes(query)) ||
+      (log.captured_at && new Date(log.captured_at).toLocaleString().toLowerCase().includes(query))
+    );
+  });
+
+  // Fetch logs and lookups on component mount
   useEffect(() => {
+    fetchLookups();
     fetchLogs();
   }, []);
 
@@ -641,7 +793,7 @@ export default function Home() {
         {/* Logs Display Section */}
         <Card glass>
           <CardHeader>
-            <div className="flex justify-between items-center">
+            <div className="flex justify-between items-center mb-4">
               <CardTitle>MCAP Logs</CardTitle>
               <Button
                 onClick={fetchLogs}
@@ -651,6 +803,19 @@ export default function Home() {
                 {loading ? 'Refreshing...' : 'Refresh'}
               </Button>
             </div>
+            <div className="flex gap-2">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-zinc-400" />
+                <Input
+                  type="text"
+                  placeholder="Search logs by ID, car, driver, event type, notes..."
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  glass
+                  className="pl-10"
+                />
+              </div>
+            </div>
           </CardHeader>
           <CardContent>
 
@@ -658,9 +823,11 @@ export default function Home() {
             <div className="text-center py-8">
               <p className="text-zinc-600 dark:text-zinc-400">Loading logs...</p>
             </div>
-          ) : logs.length === 0 ? (
+          ) : filteredLogs.length === 0 ? (
             <div className="text-center py-8">
-              <p className="text-zinc-600 dark:text-zinc-400">No logs found. Upload a file to get started.</p>
+              <p className="text-zinc-600 dark:text-zinc-400">
+                {searchQuery ? `No logs found matching "${searchQuery}"` : 'No logs found. Upload a file to get started.'}
+              </p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -680,7 +847,7 @@ export default function Home() {
                   </tr>
                 </thead>
                 <tbody>
-                  {logs.map((log) => (
+                  {filteredLogs.map((log) => (
                     <tr
                       key={log.id}
                       className="border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800 transition-colors"
@@ -733,13 +900,13 @@ export default function Home() {
                         </div>
                       </td>
                       <td className="py-3 px-4 text-sm text-zinc-700 dark:text-zinc-300">
-                        {log.car || 'N/A'}
+                        {getName(log.car)}
                       </td>
                       <td className="py-3 px-4 text-sm text-zinc-700 dark:text-zinc-300">
-                        {log.driver || 'N/A'}
+                        {getName(log.driver)}
                       </td>
                       <td className="py-3 px-4 text-sm text-zinc-700 dark:text-zinc-300">
-                        {log.event_type || 'N/A'}
+                        {getName(log.event_type)}
                       </td>
                       <td className="py-3 px-4 text-sm">
                         <div className="flex gap-2 flex-wrap">
@@ -759,6 +926,17 @@ export default function Home() {
                             className="text-xs"
                           >
                             Map
+                          </Button>
+                          <Button
+                            onClick={() => handleDownload(log.id)}
+                            disabled={downloading === log.id}
+                            variant="outline"
+                            size="sm"
+                            className="text-xs"
+                            title="Download MCAP file"
+                          >
+                            <Download className="h-3 w-3 mr-1" />
+                            {downloading === log.id ? 'Downloading...' : 'Download'}
                           </Button>
                           <Button
                             onClick={() => handleEditLog(log.id)}
@@ -834,15 +1012,15 @@ export default function Home() {
                       </div>
                       <div>
                         <label className="text-sm font-medium text-zinc-600 dark:text-zinc-400">Car</label>
-                        <p className="text-black dark:text-zinc-50">{selectedLog.car || 'N/A'}</p>
+                        <p className="text-black dark:text-zinc-50">{getName(selectedLog.car)}</p>
                       </div>
                       <div>
                         <label className="text-sm font-medium text-zinc-600 dark:text-zinc-400">Driver</label>
-                        <p className="text-black dark:text-zinc-50">{selectedLog.driver || 'N/A'}</p>
+                        <p className="text-black dark:text-zinc-50">{getName(selectedLog.driver)}</p>
                       </div>
                       <div>
                         <label className="text-sm font-medium text-zinc-600 dark:text-zinc-400">Event Type</label>
-                        <p className="text-black dark:text-zinc-50">{selectedLog.event_type || 'N/A'}</p>
+                        <p className="text-black dark:text-zinc-50">{getName(selectedLog.event_type)}</p>
                       </div>
                       <div>
                         <label className="text-sm font-medium text-zinc-600 dark:text-zinc-400">Created At</label>
@@ -949,34 +1127,127 @@ export default function Home() {
               </DialogHeader>
               <div className="space-y-4">
                 <div>
-                  <Label htmlFor="car">Car</Label>
-                  <Input
-                    id="car"
-                    type="text"
-                    value={editForm.car}
-                    onChange={(e) => setEditForm({ ...editForm, car: e.target.value })}
-                    glass
-                  />
+                  <div className="flex items-center justify-between mb-1">
+                    <Label htmlFor="car">Car</Label>
+                    {editForm.car && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-xs"
+                        onClick={() => setEditForm({ ...editForm, car: '' })}
+                      >
+                        Clear
+                      </Button>
+                    )}
+                  </div>
+                  {loadingLookups ? (
+                    <Input
+                      id="car"
+                      type="text"
+                      value="Loading..."
+                      disabled
+                      glass
+                    />
+                  ) : (
+                    <Select
+                      value={editForm.car || undefined}
+                      onValueChange={(value) => setEditForm({ ...editForm, car: value })}
+                    >
+                      <SelectTrigger id="car" className="glass-input backdrop-blur-md border-opacity-20 bg-opacity-10">
+                        <SelectValue placeholder="Select a car" />
+                      </SelectTrigger>
+                      <SelectContent className="glass-card backdrop-blur-md">
+                        {cars.map((car) => (
+                          <SelectItem key={car.id} value={car.id.toString()}>
+                            {car.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
                 <div>
-                  <Label htmlFor="driver">Driver</Label>
-                  <Input
-                    id="driver"
-                    type="text"
-                    value={editForm.driver}
-                    onChange={(e) => setEditForm({ ...editForm, driver: e.target.value })}
-                    glass
-                  />
+                  <div className="flex items-center justify-between mb-1">
+                    <Label htmlFor="driver">Driver</Label>
+                    {editForm.driver && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-xs"
+                        onClick={() => setEditForm({ ...editForm, driver: '' })}
+                      >
+                        Clear
+                      </Button>
+                    )}
+                  </div>
+                  {loadingLookups ? (
+                    <Input
+                      id="driver"
+                      type="text"
+                      value="Loading..."
+                      disabled
+                      glass
+                    />
+                  ) : (
+                    <Select
+                      value={editForm.driver || undefined}
+                      onValueChange={(value) => setEditForm({ ...editForm, driver: value })}
+                    >
+                      <SelectTrigger id="driver" className="glass-input backdrop-blur-md border-opacity-20 bg-opacity-10">
+                        <SelectValue placeholder="Select a driver" />
+                      </SelectTrigger>
+                      <SelectContent className="glass-card backdrop-blur-md">
+                        {drivers.map((driver) => (
+                          <SelectItem key={driver.id} value={driver.id.toString()}>
+                            {driver.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
                 <div>
-                  <Label htmlFor="event_type">Event Type</Label>
-                  <Input
-                    id="event_type"
-                    type="text"
-                    value={editForm.event_type}
-                    onChange={(e) => setEditForm({ ...editForm, event_type: e.target.value })}
-                    glass
-                  />
+                  <div className="flex items-center justify-between mb-1">
+                    <Label htmlFor="event_type">Event Type</Label>
+                    {editForm.event_type && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 px-2 text-xs"
+                        onClick={() => setEditForm({ ...editForm, event_type: '' })}
+                      >
+                        Clear
+                      </Button>
+                    )}
+                  </div>
+                  {loadingLookups ? (
+                    <Input
+                      id="event_type"
+                      type="text"
+                      value="Loading..."
+                      disabled
+                      glass
+                    />
+                  ) : (
+                    <Select
+                      value={editForm.event_type || undefined}
+                      onValueChange={(value) => setEditForm({ ...editForm, event_type: value })}
+                    >
+                      <SelectTrigger id="event_type" className="glass-input backdrop-blur-md border-opacity-20 bg-opacity-10">
+                        <SelectValue placeholder="Select an event type" />
+                      </SelectTrigger>
+                      <SelectContent className="glass-card backdrop-blur-md">
+                        {eventTypes.map((eventType) => (
+                          <SelectItem key={eventType.id} value={eventType.id.toString()}>
+                            {eventType.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
                 </div>
                 <div>
                   <Label htmlFor="notes">Notes</Label>
