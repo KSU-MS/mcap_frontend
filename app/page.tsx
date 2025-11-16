@@ -3,6 +3,12 @@
 import { useState, useEffect } from 'react';
 import dynamic from 'next/dynamic';
 import 'leaflet/dist/leaflet.css';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 
 // Map Preview Component - small preview for table rows
 const MapPreview = dynamic(
@@ -539,71 +545,82 @@ export default function Home() {
   }, []);
 
   return (
-    <div className="min-h-screen bg-zinc-50 dark:bg-black py-8 px-4 sm:px-8">
-      <div className="max-w-7xl mx-auto">
-        <h1 className="text-4xl font-bold text-black dark:text-zinc-50 mb-8">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-purple-50 to-pink-50 dark:from-gray-900 dark:via-blue-900 dark:to-purple-900 py-8 px-4 sm:px-8 relative overflow-hidden">
+      {/* Animated background elements for glassmorphism effect */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute -top-40 -right-40 w-80 h-80 bg-purple-300 dark:bg-purple-800 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-xl opacity-30 animate-blob"></div>
+        <div className="absolute -bottom-40 -left-40 w-80 h-80 bg-yellow-300 dark:bg-yellow-800 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-xl opacity-30 animate-blob animation-delay-2000"></div>
+        <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 w-80 h-80 bg-pink-300 dark:bg-pink-800 rounded-full mix-blend-multiply dark:mix-blend-screen filter blur-xl opacity-30 animate-blob animation-delay-4000"></div>
+      </div>
+      
+      <div className="max-w-7xl mx-auto relative z-10">
+        <h1 className="text-4xl font-bold text-black dark:text-zinc-50 mb-8 drop-shadow-lg">
           MCAP Log Manager
         </h1>
 
         {/* Upload Section */}
-        <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-md p-6 mb-8">
-          <h2 className="text-2xl font-semibold text-black dark:text-zinc-50 mb-4">
-            Upload MCAP File
-          </h2>
-          
-          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
-            <label className="flex items-center justify-center px-6 py-3 bg-foreground text-background rounded-lg cursor-pointer hover:bg-[#383838] dark:hover:bg-[#ccc] transition-colors">
-              <input
-                type="file"
-                accept=".mcap"
-                onChange={handleFileChange}
-                className="hidden"
-                disabled={uploading}
-              />
-              <span>Select MCAP File</span>
-            </label>
+        <Card glass className="mb-8">
+          <CardHeader>
+            <CardTitle>Upload MCAP File</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+              <label className="cursor-pointer">
+                <input
+                  type="file"
+                  accept=".mcap"
+                  onChange={handleFileChange}
+                  className="hidden"
+                  disabled={uploading}
+                />
+                <Button variant="glass" className="cursor-pointer" asChild>
+                  <span>Select MCAP File</span>
+                </Button>
+              </label>
 
-            {selectedFile && (
-              <div className="flex-1">
-                <p className="text-sm text-zinc-600 dark:text-zinc-400">
-                  Selected: <span className="font-medium text-black dark:text-zinc-50">{selectedFile.name}</span>
-                </p>
-                <p className="text-xs text-zinc-500 dark:text-zinc-500">
-                  Size: {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-                </p>
+              {selectedFile && (
+                <div className="flex-1">
+                  <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                    Selected: <span className="font-medium text-black dark:text-zinc-50">{selectedFile.name}</span>
+                  </p>
+                  <p className="text-xs text-zinc-500 dark:text-zinc-500">
+                    Size: {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                  </p>
+                </div>
+              )}
+
+              <Button
+                onClick={handleUpload}
+                disabled={!selectedFile || uploading}
+                variant="default"
+              >
+                {uploading ? 'Uploading...' : 'Upload'}
+              </Button>
+            </div>
+
+            {error && (
+              <div className="mt-4 p-4 glass-card border-red-200 dark:border-red-800 rounded-lg">
+                <p className="text-red-600 dark:text-red-400">{error}</p>
               </div>
             )}
-
-            <button
-              onClick={handleUpload}
-              disabled={!selectedFile || uploading}
-              className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-zinc-400 disabled:cursor-not-allowed transition-colors"
-            >
-              {uploading ? 'Uploading...' : 'Upload'}
-            </button>
-          </div>
-
-          {error && (
-            <div className="mt-4 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-              <p className="text-red-600 dark:text-red-400">{error}</p>
-            </div>
-          )}
-        </div>
+          </CardContent>
+        </Card>
 
         {/* Logs Display Section */}
-        <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-md p-6">
-          <div className="flex justify-between items-center mb-4">
-            <h2 className="text-2xl font-semibold text-black dark:text-zinc-50">
-              MCAP Logs
-            </h2>
-            <button
-              onClick={fetchLogs}
-              disabled={loading}
-              className="px-4 py-2 bg-zinc-200 dark:bg-zinc-800 text-black dark:text-zinc-50 rounded-lg hover:bg-zinc-300 dark:hover:bg-zinc-700 disabled:opacity-50 transition-colors"
-            >
-              {loading ? 'Refreshing...' : 'Refresh'}
-            </button>
-          </div>
+        <Card glass>
+          <CardHeader>
+            <div className="flex justify-between items-center">
+              <CardTitle>MCAP Logs</CardTitle>
+              <Button
+                onClick={fetchLogs}
+                disabled={loading}
+                variant="glass"
+              >
+                {loading ? 'Refreshing...' : 'Refresh'}
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
 
           {loading && logs.length === 0 ? (
             <div className="text-center py-8">
@@ -694,31 +711,39 @@ export default function Home() {
                       </td>
                       <td className="py-3 px-4 text-sm">
                         <div className="flex gap-2 flex-wrap">
-                          <button
+                          <Button
                             onClick={() => handleViewLog(log.id)}
-                            className="px-3 py-1 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors text-xs"
+                            variant="default"
+                            size="sm"
+                            className="text-xs"
                           >
                             View
-                          </button>
-                          <button
+                          </Button>
+                          <Button
                             onClick={() => fetchGeoJson(log.id)}
                             disabled={loadingGeoJson}
-                            className="px-3 py-1 bg-purple-500 text-white rounded hover:bg-purple-600 disabled:opacity-50 transition-colors text-xs"
+                            variant="secondary"
+                            size="sm"
+                            className="text-xs"
                           >
                             Map
-                          </button>
-                          <button
+                          </Button>
+                          <Button
                             onClick={() => handleEditLog(log.id)}
-                            className="px-3 py-1 bg-green-500 text-white rounded hover:bg-green-600 transition-colors text-xs"
+                            variant="default"
+                            size="sm"
+                            className="text-xs bg-green-500 hover:bg-green-600"
                           >
                             Edit
-                          </button>
-                          <button
+                          </Button>
+                          <Button
                             onClick={() => openDeleteConfirm(log.id)}
-                            className="px-3 py-1 bg-red-500 text-white rounded hover:bg-red-600 transition-colors text-xs"
+                            variant="destructive"
+                            size="sm"
+                            className="text-xs"
                           >
                             Delete
-                          </button>
+                          </Button>
                         </div>
                       </td>
                     </tr>
@@ -727,27 +752,19 @@ export default function Home() {
               </table>
             </div>
           )}
-        </div>
+          </CardContent>
+        </Card>
 
         {/* View Modal */}
-        {isViewModalOpen && selectedLog && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-xl max-w-3xl w-full max-h-[90vh] overflow-y-auto">
-              <div className="p-6">
-                <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-2xl font-semibold text-black dark:text-zinc-50">
-                    Log Details - ID: {selectedLog.id}
-                  </h2>
-                  <button
-                    onClick={() => {
-                      setIsViewModalOpen(false);
-                      setSelectedLog(null);
-                    }}
-                    className="text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200 text-2xl"
-                  >
-                    ×
-                  </button>
-                </div>
+        <Dialog open={isViewModalOpen} onOpenChange={(open) => {
+          setIsViewModalOpen(open);
+          if (!open) setSelectedLog(null);
+        }}>
+          {selectedLog && (
+            <DialogContent glass className="max-w-3xl max-h-[90vh] overflow-y-auto">
+              <DialogHeader>
+                <DialogTitle>Log Details - ID: {selectedLog.id}</DialogTitle>
+              </DialogHeader>
                 {loadingLog ? (
                   <div className="text-center py-8">
                     <p className="text-zinc-600 dark:text-zinc-400">Loading log details...</p>
@@ -830,174 +847,154 @@ export default function Home() {
                       </div>
                     )}
                     <div className="pt-4">
-                      <button
+                      <Button
                         onClick={() => fetchGeoJson(selectedLog.id)}
                         disabled={loadingGeoJson}
-                        className="w-full px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        className="w-full"
+                        variant="secondary"
                       >
                         {loadingGeoJson ? 'Loading Map...' : 'View on Map'}
-                      </button>
+                      </Button>
                     </div>
                   </div>
                 )}
-              </div>
-            </div>
-          </div>
-        )}
+            </DialogContent>
+          )}
+        </Dialog>
 
         {/* Map Modal */}
-        {isMapModalOpen && geoJsonData && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-xl max-w-6xl w-full h-[90vh] flex flex-col">
+        <Dialog open={isMapModalOpen} onOpenChange={(open) => {
+          setIsMapModalOpen(open);
+          if (!open) setGeoJsonData(null);
+        }}>
+          {geoJsonData && (
+            <DialogContent glass className="max-w-6xl w-full h-[90vh] flex flex-col p-0">
               <div className="p-4 border-b border-zinc-200 dark:border-zinc-700 flex justify-between items-center">
-                <h2 className="text-2xl font-semibold text-black dark:text-zinc-50">
-                  Map View - Log ID: {selectedLog?.id}
-                </h2>
-                <button
-                  onClick={() => {
-                    setIsMapModalOpen(false);
-                    setGeoJsonData(null);
-                  }}
-                  className="text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200 text-2xl"
-                >
-                  ×
-                </button>
+                <DialogTitle>Map View - Log ID: {selectedLog?.id}</DialogTitle>
               </div>
               <div className="flex-1 relative">
                 <MapComponent geoJsonData={geoJsonData} />
               </div>
-            </div>
-          </div>
-        )}
+            </DialogContent>
+          )}
+        </Dialog>
 
         {/* Edit Modal */}
-        {isEditModalOpen && selectedLog && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-xl max-w-2xl w-full">
-              <div className="p-6">
-                <div className="flex justify-between items-center mb-4">
-                  <h2 className="text-2xl font-semibold text-black dark:text-zinc-50">
-                    Edit Log - ID: {selectedLog.id}
-                  </h2>
-                  <button
+        <Dialog open={isEditModalOpen} onOpenChange={(open) => {
+          setIsEditModalOpen(open);
+          if (!open) setSelectedLog(null);
+        }}>
+          {selectedLog && (
+            <DialogContent glass className="max-w-2xl">
+              <DialogHeader>
+                <DialogTitle>Edit Log - ID: {selectedLog.id}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4">
+                <div>
+                  <Label htmlFor="car">Car</Label>
+                  <Input
+                    id="car"
+                    type="text"
+                    value={editForm.car}
+                    onChange={(e) => setEditForm({ ...editForm, car: e.target.value })}
+                    glass
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="driver">Driver</Label>
+                  <Input
+                    id="driver"
+                    type="text"
+                    value={editForm.driver}
+                    onChange={(e) => setEditForm({ ...editForm, driver: e.target.value })}
+                    glass
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="event_type">Event Type</Label>
+                  <Input
+                    id="event_type"
+                    type="text"
+                    value={editForm.event_type}
+                    onChange={(e) => setEditForm({ ...editForm, event_type: e.target.value })}
+                    glass
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="notes">Notes</Label>
+                  <Textarea
+                    id="notes"
+                    value={editForm.notes}
+                    onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                    rows={4}
+                    glass
+                  />
+                </div>
+                <DialogFooter>
+                  <Button
+                    onClick={() => handleUpdateLog(selectedLog.id, false)}
+                    disabled={saving}
+                    variant="default"
+                    className="bg-green-600 hover:bg-green-700"
+                  >
+                    {saving ? 'Saving...' : 'Update (PATCH)'}
+                  </Button>
+                  <Button
+                    onClick={() => handleUpdateLog(selectedLog.id, true)}
+                    disabled={saving}
+                    variant="default"
+                  >
+                    {saving ? 'Saving...' : 'Update (PUT)'}
+                  </Button>
+                  <Button
                     onClick={() => {
                       setIsEditModalOpen(false);
                       setSelectedLog(null);
                     }}
-                    className="text-zinc-500 hover:text-zinc-700 dark:text-zinc-400 dark:hover:text-zinc-200 text-2xl"
-                  >
-                    ×
-                  </button>
-                </div>
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
-                      Car
-                    </label>
-                    <input
-                      type="text"
-                      value={editForm.car}
-                      onChange={(e) => setEditForm({ ...editForm, car: e.target.value })}
-                      className="w-full px-3 py-2 border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-black dark:text-zinc-50"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
-                      Driver
-                    </label>
-                    <input
-                      type="text"
-                      value={editForm.driver}
-                      onChange={(e) => setEditForm({ ...editForm, driver: e.target.value })}
-                      className="w-full px-3 py-2 border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-black dark:text-zinc-50"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
-                      Event Type
-                    </label>
-                    <input
-                      type="text"
-                      value={editForm.event_type}
-                      onChange={(e) => setEditForm({ ...editForm, event_type: e.target.value })}
-                      className="w-full px-3 py-2 border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-black dark:text-zinc-50"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-sm font-medium text-zinc-700 dark:text-zinc-300 mb-1">
-                      Notes
-                    </label>
-                    <textarea
-                      value={editForm.notes}
-                      onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
-                      rows={4}
-                      className="w-full px-3 py-2 border border-zinc-300 dark:border-zinc-700 rounded-lg bg-white dark:bg-zinc-800 text-black dark:text-zinc-50"
-                    />
-                  </div>
-                  <div className="flex gap-3 pt-4">
-                    <button
-                      onClick={() => handleUpdateLog(selectedLog.id, false)}
-                      disabled={saving}
-                      className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                      {saving ? 'Saving...' : 'Update (PATCH)'}
-                    </button>
-                    <button
-                      onClick={() => handleUpdateLog(selectedLog.id, true)}
-                      disabled={saving}
-                      className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                    >
-                      {saving ? 'Saving...' : 'Update (PUT)'}
-                    </button>
-                    <button
-                      onClick={() => {
-                        setIsEditModalOpen(false);
-                        setSelectedLog(null);
-                      }}
-                      className="px-4 py-2 bg-zinc-300 dark:bg-zinc-700 text-black dark:text-zinc-50 rounded-lg hover:bg-zinc-400 dark:hover:bg-zinc-600 transition-colors"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
-
-        {/* Delete Confirmation Modal */}
-        {isDeleteModalOpen && logToDelete !== null && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-            <div className="bg-white dark:bg-zinc-900 rounded-lg shadow-xl max-w-md w-full">
-              <div className="p-6">
-                <h2 className="text-2xl font-semibold text-black dark:text-zinc-50 mb-4">
-                  Confirm Delete
-                </h2>
-                <p className="text-zinc-600 dark:text-zinc-400 mb-6">
-                  Are you sure you want to delete log ID {logToDelete}? This action cannot be undone.
-                </p>
-                <div className="flex gap-3">
-                  <button
-                    onClick={() => handleDeleteLog(logToDelete)}
-                    disabled={deleting}
-                    className="flex-1 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-                  >
-                    {deleting ? 'Deleting...' : 'Delete'}
-                  </button>
-                  <button
-                    onClick={() => {
-                      setIsDeleteModalOpen(false);
-                      setLogToDelete(null);
-                    }}
-                    className="flex-1 px-4 py-2 bg-zinc-300 dark:bg-zinc-700 text-black dark:text-zinc-50 rounded-lg hover:bg-zinc-400 dark:hover:bg-zinc-600 transition-colors"
+                    variant="secondary"
                   >
                     Cancel
-                  </button>
-                </div>
+                  </Button>
+                </DialogFooter>
               </div>
-            </div>
-          </div>
-        )}
+            </DialogContent>
+          )}
+        </Dialog>
+
+        {/* Delete Confirmation Modal */}
+        <Dialog open={isDeleteModalOpen} onOpenChange={(open) => {
+          setIsDeleteModalOpen(open);
+          if (!open) setLogToDelete(null);
+        }}>
+          {logToDelete !== null && (
+            <DialogContent glass className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Confirm Delete</DialogTitle>
+                <DialogDescription>
+                  Are you sure you want to delete log ID {logToDelete}? This action cannot be undone.
+                </DialogDescription>
+              </DialogHeader>
+              <DialogFooter>
+                <Button
+                  onClick={() => handleDeleteLog(logToDelete)}
+                  disabled={deleting}
+                  variant="destructive"
+                >
+                  {deleting ? 'Deleting...' : 'Delete'}
+                </Button>
+                <Button
+                  onClick={() => {
+                    setIsDeleteModalOpen(false);
+                    setLogToDelete(null);
+                  }}
+                  variant="secondary"
+                >
+                  Cancel
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          )}
+        </Dialog>
         </div>
     </div>
   );
