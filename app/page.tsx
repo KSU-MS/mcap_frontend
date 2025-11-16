@@ -162,29 +162,29 @@ const MapPreview = dynamic(
           title="Click to view full map"
         >
           {mounted && containerReady ? (
-            <MapContainer
-              center={center}
-              zoom={13}
-              style={{ height: '100%', width: '100%', zIndex: 0 }}
-              scrollWheelZoom={false}
-              zoomControl={false}
-              dragging={false}
-              doubleClickZoom={false}
-              boxZoom={false}
-              touchZoom={false}
+          <MapContainer
+            center={center}
+            zoom={13}
+            style={{ height: '100%', width: '100%', zIndex: 0 }}
+            scrollWheelZoom={false}
+            zoomControl={false}
+            dragging={false}
+            doubleClickZoom={false}
+            boxZoom={false}
+            touchZoom={false}
               key={`map-${logId}-${mounted}`}
-            >
-              <TileLayer
-                attribution=""
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              />
-              <GeoJSON
-                data={geoJsonData}
-                style={geoJsonStyle}
-                pointToLayer={pointToLayer}
-              />
-              <FitBounds geoJsonData={geoJsonData} />
-            </MapContainer>
+          >
+            <TileLayer
+              attribution=""
+              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+            />
+            <GeoJSON
+              data={geoJsonData}
+              style={geoJsonStyle}
+              pointToLayer={pointToLayer}
+            />
+            <FitBounds geoJsonData={geoJsonData} />
+          </MapContainer>
           ) : (
             <div className="w-full h-full flex items-center justify-center">
               <span className="text-xs text-zinc-500">Loading map...</span>
@@ -541,10 +541,25 @@ export default function Home() {
     try {
       const log = await fetchLog(id);
       setSelectedLog(log);
+      
+      // Extract IDs - wait a bit if lookups aren't ready yet
+      let carId = extractId(log.car);
+      let driverId = extractId(log.driver);
+      let eventId = extractId(log.event_type);
+      
+      // If extraction failed and lookups aren't loaded, wait and try again
+      if ((!carId || !driverId || !eventId) && loadingLookups) {
+        // Wait for lookups to load
+        await new Promise(resolve => setTimeout(resolve, 500));
+        carId = extractId(log.car);
+        driverId = extractId(log.driver);
+        eventId = extractId(log.event_type);
+      }
+      
       setEditForm({
-        car: extractId(log.car),
-        driver: extractId(log.driver),
-        event_type: extractId(log.event_type),
+        car: carId,
+        driver: driverId,
+        event_type: eventId,
         notes: log.notes || '',
       });
       setIsEditModalOpen(true);
@@ -562,12 +577,47 @@ export default function Home() {
       const method = usePut ? 'PUT' : 'PATCH';
       
       // Build request body - convert IDs to numbers for car, driver, event_type
-      const body = {
-        car: editForm.car ? Number(editForm.car) : null,
-        driver: editForm.driver ? Number(editForm.driver) : null,
-        event_type: editForm.event_type ? Number(editForm.event_type) : null,
+      const body: any = {
         notes: editForm.notes || '',
       };
+
+      // Convert string IDs to numbers
+      // The API expects car_id, driver_id, event_type_id (with _id suffix) for updates
+      // For PATCH: only include fields that have values (don't send null)
+      // For PUT: include all fields, even if null
+      if (usePut) {
+        // PUT requires all fields - send null if empty
+        body.car_id = editForm.car && editForm.car.trim() !== '' ? Number(editForm.car) : null;
+        body.driver_id = editForm.driver && editForm.driver.trim() !== '' ? Number(editForm.driver) : null;
+        body.event_type_id = editForm.event_type && editForm.event_type.trim() !== '' ? Number(editForm.event_type) : null;
+      } else {
+        // PATCH: only include fields that have values
+        if (editForm.car && editForm.car.trim() !== '') {
+          const carId = Number(editForm.car);
+          if (!isNaN(carId) && carId > 0) {
+            body.car_id = carId;
+          }
+        }
+        if (editForm.driver && editForm.driver.trim() !== '') {
+          const driverId = Number(editForm.driver);
+          if (!isNaN(driverId) && driverId > 0) {
+            body.driver_id = driverId;
+          }
+        }
+        if (editForm.event_type && editForm.event_type.trim() !== '') {
+          const eventId = Number(editForm.event_type);
+          if (!isNaN(eventId) && eventId > 0) {
+            body.event_type_id = eventId;
+          }
+        }
+      }
+
+      console.log('=== UPDATE DEBUG ===');
+      console.log('Log ID:', id);
+      console.log('Method:', method);
+      console.log('Edit form state:', editForm);
+      console.log('Request body being sent:', body);
+      console.log('Body JSON:', JSON.stringify(body));
 
       const response = await fetch(`${API_BASE_URL}/mcap-logs/${id}/`, {
         method,
@@ -581,6 +631,7 @@ export default function Home() {
         let errorMessage = `Update failed: ${response.statusText}`;
         try {
           const errorData = await response.json();
+          console.error('Update error response:', errorData); // Debug log
           // Handle different error response formats
           if (errorData.detail) {
             errorMessage = errorData.detail;
@@ -602,8 +653,44 @@ export default function Home() {
         throw new Error(errorMessage);
       }
 
+      // Get the updated log data
+      const updatedData = await response.json();
+      console.log('Update successful, response:', updatedData); // Debug log
+      console.log('Response car:', updatedData.car);
+      console.log('Response driver:', updatedData.driver);
+      console.log('Response event_type:', updatedData.event_type);
+      
+      // Check if the update actually worked
+      if (updatedData.car === null && body.car !== undefined) {
+        console.warn('⚠️ WARNING: Backend returned null for car despite sending:', body.car);
+        console.warn('This suggests the backend serializer may not be processing the car field in PATCH requests.');
+      }
+      if (updatedData.driver === null && body.driver !== undefined) {
+        console.warn('⚠️ WARNING: Backend returned null for driver despite sending:', body.driver);
+      }
+      if (updatedData.event_type === null && body.event_type !== undefined) {
+        console.warn('⚠️ WARNING: Backend returned null for event_type despite sending:', body.event_type);
+      }
+
+      // Optimistically update the logs state with the response data
+      // This ensures the UI updates immediately even if fetchLogs is slow
+      setLogs((prevLogs) =>
+        prevLogs.map((log) =>
+          log.id === id
+            ? {
+                ...log,
+                car: updatedData.car,
+                driver: updatedData.driver,
+                event_type: updatedData.event_type,
+                notes: updatedData.notes || log.notes,
+              }
+            : log
+        )
+      );
+
       setIsEditModalOpen(false);
       setSelectedLog(null);
+      // Still refetch to ensure we have the latest data
       await fetchLogs();
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to update log');
@@ -748,61 +835,61 @@ export default function Home() {
             <CardTitle>Upload MCAP File</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
+          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center">
               <label className="cursor-pointer">
-                <input
-                  type="file"
-                  accept=".mcap"
-                  onChange={handleFileChange}
-                  className="hidden"
-                  disabled={uploading}
-                />
+              <input
+                type="file"
+                accept=".mcap"
+                onChange={handleFileChange}
+                className="hidden"
+                disabled={uploading}
+              />
                 <Button variant="glass" className="cursor-pointer" asChild>
-                  <span>Select MCAP File</span>
+              <span>Select MCAP File</span>
                 </Button>
-              </label>
+            </label>
 
-              {selectedFile && (
-                <div className="flex-1">
-                  <p className="text-sm text-zinc-600 dark:text-zinc-400">
-                    Selected: <span className="font-medium text-black dark:text-zinc-50">{selectedFile.name}</span>
-                  </p>
-                  <p className="text-xs text-zinc-500 dark:text-zinc-500">
-                    Size: {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
-                  </p>
-                </div>
-              )}
-
-              <Button
-                onClick={handleUpload}
-                disabled={!selectedFile || uploading}
-                variant="default"
-              >
-                {uploading ? 'Uploading...' : 'Upload'}
-              </Button>
-            </div>
-
-            {error && (
-              <div className="mt-4 p-4 glass-card border-red-200 dark:border-red-800 rounded-lg">
-                <p className="text-red-600 dark:text-red-400">{error}</p>
+            {selectedFile && (
+              <div className="flex-1">
+                <p className="text-sm text-zinc-600 dark:text-zinc-400">
+                  Selected: <span className="font-medium text-black dark:text-zinc-50">{selectedFile.name}</span>
+                </p>
+                <p className="text-xs text-zinc-500 dark:text-zinc-500">
+                  Size: {(selectedFile.size / 1024 / 1024).toFixed(2)} MB
+                </p>
               </div>
             )}
+
+              <Button
+              onClick={handleUpload}
+              disabled={!selectedFile || uploading}
+                variant="default"
+            >
+              {uploading ? 'Uploading...' : 'Upload'}
+              </Button>
+          </div>
+
+          {error && (
+              <div className="mt-4 p-4 glass-card border-red-200 dark:border-red-800 rounded-lg">
+              <p className="text-red-600 dark:text-red-400">{error}</p>
+            </div>
+          )}
           </CardContent>
         </Card>
 
         {/* Logs Display Section */}
         <Card glass>
           <CardHeader>
-            <div className="flex justify-between items-center mb-4">
+          <div className="flex justify-between items-center mb-4">
               <CardTitle>MCAP Logs</CardTitle>
               <Button
-                onClick={fetchLogs}
-                disabled={loading}
+              onClick={fetchLogs}
+              disabled={loading}
                 variant="glass"
-              >
-                {loading ? 'Refreshing...' : 'Refresh'}
+            >
+              {loading ? 'Refreshing...' : 'Refresh'}
               </Button>
-            </div>
+          </div>
             <div className="flex gap-2">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-zinc-400" />
@@ -1060,17 +1147,17 @@ export default function Home() {
                             <tbody>
                               {selectedLog.channels.map((channel, idx) => (
                                 <tr
-                                  key={idx}
+                              key={idx}
                                   className="border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
-                                >
+                            >
                                   <td className="py-2 px-4 text-sm text-zinc-600 dark:text-zinc-400">
                                     {idx + 1}
                                   </td>
                                   <td className="py-2 px-4 text-sm text-zinc-800 dark:text-zinc-200 font-mono">
-                                    {channel}
+                              {channel}
                                   </td>
                                 </tr>
-                              ))}
+                          ))}
                             </tbody>
                           </table>
                         </div>
@@ -1095,7 +1182,7 @@ export default function Home() {
                   </div>
                 )}
             </DialogContent>
-          )}
+        )}
         </Dialog>
 
         {/* Map Modal */}
@@ -1112,7 +1199,7 @@ export default function Home() {
                 <MapComponent geoJsonData={geoJsonData} />
               </div>
             </DialogContent>
-          )}
+        )}
         </Dialog>
 
         {/* Edit Modal */}
@@ -1125,8 +1212,8 @@ export default function Home() {
               <DialogHeader>
                 <DialogTitle>Edit Log - ID: {selectedLog.id}</DialogTitle>
               </DialogHeader>
-              <div className="space-y-4">
-                <div>
+                <div className="space-y-4">
+                  <div>
                   <div className="flex items-center justify-between mb-1">
                     <Label htmlFor="car">Car</Label>
                     {editForm.car && (
@@ -1152,7 +1239,10 @@ export default function Home() {
                   ) : (
                     <Select
                       value={editForm.car || undefined}
-                      onValueChange={(value) => setEditForm({ ...editForm, car: value })}
+                      onValueChange={(value) => {
+                        console.log('Car selected:', value);
+                        setEditForm({ ...editForm, car: value });
+                      }}
                     >
                       <SelectTrigger id="car" className="glass-input backdrop-blur-md border-opacity-20 bg-opacity-10">
                         <SelectValue placeholder="Select a car" />
@@ -1166,8 +1256,8 @@ export default function Home() {
                       </SelectContent>
                     </Select>
                   )}
-                </div>
-                <div>
+                  </div>
+                  <div>
                   <div className="flex items-center justify-between mb-1">
                     <Label htmlFor="driver">Driver</Label>
                     {editForm.driver && (
@@ -1193,7 +1283,10 @@ export default function Home() {
                   ) : (
                     <Select
                       value={editForm.driver || undefined}
-                      onValueChange={(value) => setEditForm({ ...editForm, driver: value })}
+                      onValueChange={(value) => {
+                        console.log('Driver selected:', value);
+                        setEditForm({ ...editForm, driver: value });
+                      }}
                     >
                       <SelectTrigger id="driver" className="glass-input backdrop-blur-md border-opacity-20 bg-opacity-10">
                         <SelectValue placeholder="Select a driver" />
@@ -1207,8 +1300,8 @@ export default function Home() {
                       </SelectContent>
                     </Select>
                   )}
-                </div>
-                <div>
+                  </div>
+                  <div>
                   <div className="flex items-center justify-between mb-1">
                     <Label htmlFor="event_type">Event Type</Label>
                     {editForm.event_type && (
@@ -1234,7 +1327,10 @@ export default function Home() {
                   ) : (
                     <Select
                       value={editForm.event_type || undefined}
-                      onValueChange={(value) => setEditForm({ ...editForm, event_type: value })}
+                      onValueChange={(value) => {
+                        console.log('Event type selected:', value);
+                        setEditForm({ ...editForm, event_type: value });
+                      }}
                     >
                       <SelectTrigger id="event_type" className="glass-input backdrop-blur-md border-opacity-20 bg-opacity-10">
                         <SelectValue placeholder="Select an event type" />
@@ -1248,46 +1344,46 @@ export default function Home() {
                       </SelectContent>
                     </Select>
                   )}
-                </div>
-                <div>
+                  </div>
+                  <div>
                   <Label htmlFor="notes">Notes</Label>
                   <Textarea
                     id="notes"
-                    value={editForm.notes}
-                    onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
-                    rows={4}
+                      value={editForm.notes}
+                      onChange={(e) => setEditForm({ ...editForm, notes: e.target.value })}
+                      rows={4}
                     glass
-                  />
-                </div>
+                    />
+                  </div>
                 <DialogFooter>
                   <Button
-                    onClick={() => handleUpdateLog(selectedLog.id, false)}
-                    disabled={saving}
+                      onClick={() => handleUpdateLog(selectedLog.id, false)}
+                      disabled={saving}
                     variant="default"
                     className="bg-green-600 hover:bg-green-700"
-                  >
-                    {saving ? 'Saving...' : 'Update (PATCH)'}
+                    >
+                      {saving ? 'Saving...' : 'Update (PATCH)'}
                   </Button>
                   <Button
-                    onClick={() => handleUpdateLog(selectedLog.id, true)}
-                    disabled={saving}
+                      onClick={() => handleUpdateLog(selectedLog.id, true)}
+                      disabled={saving}
                     variant="default"
-                  >
-                    {saving ? 'Saving...' : 'Update (PUT)'}
+                    >
+                      {saving ? 'Saving...' : 'Update (PUT)'}
                   </Button>
                   <Button
-                    onClick={() => {
-                      setIsEditModalOpen(false);
-                      setSelectedLog(null);
-                    }}
+                      onClick={() => {
+                        setIsEditModalOpen(false);
+                        setSelectedLog(null);
+                      }}
                     variant="secondary"
-                  >
-                    Cancel
+                    >
+                      Cancel
                   </Button>
                 </DialogFooter>
-              </div>
+                  </div>
             </DialogContent>
-          )}
+        )}
         </Dialog>
 
         {/* Delete Confirmation Modal */}
@@ -1305,20 +1401,20 @@ export default function Home() {
               </DialogHeader>
               <DialogFooter>
                 <Button
-                  onClick={() => handleDeleteLog(logToDelete)}
-                  disabled={deleting}
+                    onClick={() => handleDeleteLog(logToDelete)}
+                    disabled={deleting}
                   variant="destructive"
-                >
-                  {deleting ? 'Deleting...' : 'Delete'}
+                  >
+                    {deleting ? 'Deleting...' : 'Delete'}
                 </Button>
                 <Button
-                  onClick={() => {
-                    setIsDeleteModalOpen(false);
-                    setLogToDelete(null);
-                  }}
+                    onClick={() => {
+                      setIsDeleteModalOpen(false);
+                      setLogToDelete(null);
+                    }}
                   variant="secondary"
-                >
-                  Cancel
+                  >
+                    Cancel
                 </Button>
               </DialogFooter>
             </DialogContent>
