@@ -49,8 +49,15 @@ const MapPreview = dynamic(
       return ({ logId, apiBaseUrl, onMapClick }: { logId: number; apiBaseUrl: string; onMapClick?: (logId: number) => void }) => {
       const [geoJsonData, setGeoJsonData] = React.useState<any>(null);
       const [loading, setLoading] = React.useState(true);
+      const [mounted, setMounted] = React.useState(false);
 
       React.useEffect(() => {
+        setMounted(true);
+      }, []);
+
+      React.useEffect(() => {
+        if (!mounted) return;
+        
         let cancelled = false;
         const fetchGeoJson = async () => {
           try {
@@ -75,7 +82,7 @@ const MapPreview = dynamic(
         return () => {
           cancelled = true;
         };
-      }, [logId, apiBaseUrl]);
+      }, [logId, apiBaseUrl, mounted]);
 
       const geoJsonStyle = {
         color: '#3388ff',
@@ -104,6 +111,14 @@ const MapPreview = dynamic(
         } else if (geoJsonData.features[0].geometry.type === 'LineString' && coords.length > 0) {
           center = [coords[0][1], coords[0][0]];
         }
+      }
+
+      if (!mounted) {
+        return (
+          <div className="w-full h-24 bg-zinc-100 dark:bg-zinc-800 rounded flex items-center justify-center">
+            <span className="text-xs text-zinc-500">Loading...</span>
+          </div>
+        );
       }
 
       if (loading) {
@@ -138,6 +153,7 @@ const MapPreview = dynamic(
             doubleClickZoom={false}
             boxZoom={false}
             touchZoom={false}
+            key={`map-${logId}-${mounted}`}
           >
             <TileLayer
               attribution=""
@@ -195,6 +211,12 @@ const MapComponent = dynamic(
       };
 
       return ({ geoJsonData }: { geoJsonData: any }) => {
+        const [mounted, setMounted] = React.useState(false);
+
+        React.useEffect(() => {
+          setMounted(true);
+        }, []);
+
         const geoJsonStyle = {
           color: '#3388ff',
           weight: 3,
@@ -233,6 +255,14 @@ const MapComponent = dynamic(
           }
         }
 
+        if (!mounted) {
+          return (
+            <div className="w-full h-full flex items-center justify-center">
+              <span className="text-zinc-500">Loading map...</span>
+            </div>
+          );
+        }
+
         return (
           <div className="w-full h-full">
             <MapContainer
@@ -240,6 +270,7 @@ const MapComponent = dynamic(
               zoom={13}
               style={{ height: '100%', width: '100%', zIndex: 0 }}
               scrollWheelZoom={true}
+              key={`fullmap-${mounted}`}
             >
               <TileLayer
                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -270,6 +301,7 @@ interface McapLog {
   captured_at?: string;
   duration_seconds?: number;
   channel_count?: number;
+  channels?: string[];
   channels_summary?: string[];
   rough_point?: string;
   car?: string;
@@ -825,18 +857,44 @@ export default function Home() {
                         </p>
                       </div>
                     </div>
-                    {selectedLog.channels_summary && selectedLog.channels_summary.length > 0 && (
-                      <div>
-                        <label className="text-sm font-medium text-zinc-600 dark:text-zinc-400">Channels Summary</label>
-                        <div className="mt-2 flex flex-wrap gap-2">
-                          {selectedLog.channels_summary.map((channel, idx) => (
-                            <span
-                              key={idx}
-                              className="px-2 py-1 bg-zinc-100 dark:bg-zinc-800 text-zinc-800 dark:text-zinc-200 rounded text-xs"
-                            >
-                              {channel}
-                            </span>
-                          ))}
+                    {selectedLog.channels && selectedLog.channels.length > 0 && (
+                      <div className="glass-card p-4 rounded-lg">
+                        <div className="flex justify-between items-center mb-3">
+                          <label className="text-base font-semibold text-zinc-700 dark:text-zinc-300">
+                            Channels
+                          </label>
+                          <span className="text-sm text-zinc-600 dark:text-zinc-400">
+                            Count: {selectedLog.channel_count ?? selectedLog.channels.length}
+                          </span>
+                        </div>
+                        <div className="max-h-64 overflow-y-auto border border-zinc-200 dark:border-zinc-700 rounded-lg">
+                          <table className="w-full border-collapse">
+                            <thead className="sticky top-0 glass-button">
+                              <tr>
+                                <th className="text-left py-2 px-4 text-sm font-semibold text-zinc-700 dark:text-zinc-300 border-b border-zinc-200 dark:border-zinc-700">
+                                  #
+                                </th>
+                                <th className="text-left py-2 px-4 text-sm font-semibold text-zinc-700 dark:text-zinc-300 border-b border-zinc-200 dark:border-zinc-700">
+                                  Channel Name
+                                </th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {selectedLog.channels.map((channel, idx) => (
+                                <tr
+                                  key={idx}
+                                  className="border-b border-zinc-100 dark:border-zinc-800 hover:bg-zinc-50 dark:hover:bg-zinc-800/50 transition-colors"
+                                >
+                                  <td className="py-2 px-4 text-sm text-zinc-600 dark:text-zinc-400">
+                                    {idx + 1}
+                                  </td>
+                                  <td className="py-2 px-4 text-sm text-zinc-800 dark:text-zinc-200 font-mono">
+                                    {channel}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
                         </div>
                       </div>
                     )}
